@@ -22,7 +22,9 @@ import { DebugPanel } from "./webviews/goalviews/debug";
 import { GoalsPanel } from "./webviews/goalviews/goalsPanel";
 import { Logbook } from "./webviews/goalviews/logbook";
 import { SidePanelProvider, addSidePanel } from "./webviews/sidePanel";
-import { CommonExecute } from "./webviews/standardviews/commonExecute";
+import { Search } from "./webviews/standardviews/search";
+import { Help } from "./webviews/standardviews/help";
+import { ExpandDefinition } from "./webviews/standardviews/expandDefinition";
 import { ExecutePanel } from "./webviews/standardviews/execute";
 import { SymbolsPanel } from "./webviews/standardviews/symbols";
 import { TacticsPanel } from "./webviews/standardviews/tactics";
@@ -31,11 +33,12 @@ import { VersionChecker } from "./version-checker";
 import { readFile } from "fs";
 import { join as joinPath} from "path";
 import { homedir } from "os";
+import { WaterproofConfigHelper, WaterproofLogger } from "./helpers";
 
 /**
  * Main extension class
  */
-export class Coqnitive implements Disposable {
+export class Waterproof implements Disposable {
 
     /** The extension context */
     private readonly context: ExtensionContext;
@@ -65,10 +68,6 @@ export class Coqnitive implements Disposable {
     public readonly executorComponent: IExecutor;
 
     private sidePanelProvider: SidePanelProvider;
-
-    private get configuration(): WorkspaceConfiguration {
-        return workspace.getConfiguration("waterproof");
-    }
 
     /**
      * Constructs the extension lifecycle object.
@@ -105,14 +104,18 @@ export class Coqnitive implements Disposable {
             this.updateGoals(document, position);  // TODO: error handling
         });
         this.webviewManager.on(WebviewManagerEvents.command, (source: IExecutor, command: string) => {
-            executeCommand(this.client, command).then(
-                results => {
-                    source.setResults(results);
-                },
-                (error: Error) => {
-                    source.setResults(["Error: " + error.message]);  // (temp)
-                }
-            );
+            if (command == "createHelp") {
+                source.setResults(["createHelp"]);
+            } else {
+                executeCommand(this.client, command).then(
+                    results => {
+                        source.setResults(results);
+                    },
+                    (error: Error) => {
+                        source.setResults(["Error: " + error.message]);  // (temp)
+                    }
+                );
+            }
         });
 
         this.disposables.push(CoqEditorProvider.register(context, this.webviewManager));
@@ -120,19 +123,21 @@ export class Coqnitive implements Disposable {
 
         // make relevant gui components
         this.statusBar = new CoqnitiveStatusBar();
-        var goalsPanel = new GoalsPanel(this.context.extensionUri, CoqLspClientConfig.create(this.configuration))
+        var goalsPanel = new GoalsPanel(this.context.extensionUri, CoqLspClientConfig.create(WaterproofConfigHelper.configuration))
         this.goalsComponents.push(goalsPanel);
         this.webviewManager.addToolWebview("goals", goalsPanel);
         this.webviewManager.open("goals")
         this.webviewManager.addToolWebview("symbols", new SymbolsPanel(this.context.extensionUri));
-        this.webviewManager.addToolWebview("commonExecute", new CommonExecute(this.context.extensionUri));
+        this.webviewManager.addToolWebview("search", new Search(this.context.extensionUri));
+        this.webviewManager.addToolWebview("help", new Help(this.context.extensionUri));
+        this.webviewManager.addToolWebview("expandDefinition", new ExpandDefinition(this.context.extensionUri));
         const executorPanel = new ExecutePanel(this.context.extensionUri);
         this.webviewManager.addToolWebview("execute", executorPanel);
         this.webviewManager.addToolWebview("tactics", new TacticsPanel(this.context.extensionUri));
-        var logbook = new Logbook(this.context.extensionUri, CoqLspClientConfig.create(this.configuration));
+        var logbook = new Logbook(this.context.extensionUri, CoqLspClientConfig.create(WaterproofConfigHelper.configuration));
         this.webviewManager.addToolWebview("logbook", logbook);
         this.goalsComponents.push(logbook);
-        var debug = new DebugPanel(this.context.extensionUri, CoqLspClientConfig.create(this.configuration));
+        var debug = new DebugPanel(this.context.extensionUri, CoqLspClientConfig.create(WaterproofConfigHelper.configuration));
         this.webviewManager.addToolWebview("debug", debug);
         this.goalsComponents.push(debug);
 
@@ -181,8 +186,8 @@ export class Coqnitive implements Disposable {
                 try {
                     workspace.getConfiguration().update("waterproof.path", defaultValue, ConfigurationTarget.Global).then(() => {
                         setTimeout(() => {
-                            const changedTo = workspace.getConfiguration().get("waterproof.path");
-                            window.showInformationMessage(`Waterproof Path setting succesfully updated to: "${changedTo}"`);
+                            WaterproofLogger.log("Waterproof Args setting changed to: " + WaterproofConfigHelper.path.toString());
+                            window.showInformationMessage(`Waterproof Path setting succesfully updated!`);
                         }, 100);
                     });
                 } catch (e) {
@@ -203,7 +208,7 @@ export class Coqnitive implements Disposable {
             try {
                 workspace.getConfiguration().update("waterproof.args", defaultArgs, ConfigurationTarget.Global).then(() => {
                     setTimeout(() => {
-                        const changedTo = workspace.getConfiguration().get("waterproof.args");
+                        WaterproofLogger.log("Waterproof Args setting changed to: " + WaterproofConfigHelper.args.toString());
                         
                         window.showInformationMessage(`Waterproof args setting succesfully updated!`);
                     }, 100);
@@ -307,7 +312,7 @@ export class Coqnitive implements Disposable {
         // Run the version checker.
         const requiredCoqLSPVersion = this.context.extension.packageJSON.requiredCoqLspVersion;
         const requiredCoqWaterproofVersion = this.context.extension.packageJSON.requiredCoqWaterproofVersion;
-        const versionChecker = new VersionChecker(this.configuration, this.context, requiredCoqLSPVersion, requiredCoqWaterproofVersion);
+        const versionChecker = new VersionChecker(WaterproofConfigHelper.configuration, this.context, requiredCoqLSPVersion, requiredCoqWaterproofVersion);
         // 
         const foundServer = await versionChecker.prelaunchChecks();
 
@@ -319,18 +324,21 @@ export class Coqnitive implements Disposable {
                 return Promise.reject(new Error("Cannot initialize client; one is already running."))
             }
 
+            const serverOptions = CoqLspServerConfig.create(
+                // TODO: Support +coqversion versions.
+                this.context.extension.packageJSON.requiredCoqLspVersion.slice(2),
+                WaterproofConfigHelper.configuration
+            );
+
             const clientOptions: LanguageClientOptions = {
                 documentSelector: [{ language: "coqmarkdown" }],  // only `.mv` files, not `.v`
-                outputChannelName: "Waterproof LSP Events",
+                outputChannelName: "Waterproof LSP Events (Initial)",
                 revealOutputChannelOn: RevealOutputChannelOn.Info,
-                initializationOptions: CoqLspServerConfig.create(
-                    this.context.extension.packageJSON.requiredCoqLspVersion.slice(2),
-                    this.configuration
-                ),
+                initializationOptions: serverOptions,
                 markdown: { isTrusted: true, supportHtml: true },
             };
 
-            this.client = this.clientFactory(clientOptions, this.configuration);
+            this.client = this.clientFactory(clientOptions, WaterproofConfigHelper.configuration);
             return this.client.startWithHandlers(this.webviewManager).then(
                 () => {
                     // show user that LSP is working

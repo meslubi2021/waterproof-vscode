@@ -2,7 +2,7 @@
   "name": "waterproof",
   "displayName": "Waterproof",
   "description": "Waterproof for VSC",
-  "version": "0.9.10",
+  "version": "0.9.14",
   "requiredCoqLspVersion": "==0.1.8",
   "requiredCoqWaterproofVersion": "==2.1.0",
   "contributors": [
@@ -40,6 +40,13 @@
     "onLanguage:coqmarkdown"
   ],
   "contributes": {
+    "iconThemes": [
+      {
+        "id": "waterproof-icons",
+        "label": "Waterproof",
+        "path": "./fileicons/waterproof-icon-theme.json"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "coqEditor.coqEditor",
@@ -78,7 +85,7 @@
     "commands": [
       {
         "command": "waterproof.openTutorial",
-        "category": "Waterproof", 
+        "category": "Waterproof",
         "title": "Open Tutorial"
       },
       {
@@ -245,8 +252,8 @@
             }
           },
           {
-            "title": "Waterproof Tutorial", 
-            "id": "open-tutorial", 
+            "title": "Waterproof Tutorial",
+            "id": "open-tutorial",
             "description": "Open the Waterproof tutorial to start learning.\n[Open Tutorial](command:waterproof.openTutorial)",
             "completionEvents": [
               "onCommand:waterproof.openTutorial"
@@ -270,12 +277,17 @@
         }
       },
       {
-        "title": "Standard Coq Syntax",
+        "title": "Waterproof Use Case",
         "properties": {
           "waterproof.standardCoqSyntax": {
             "type": "boolean",
             "default": false,
             "description": "Enable Standard Coq syntax; if true, standard Coq syntax will be used instead of the Waterproof proof language."
+          },
+          "waterproof.enforceCorrectNonInputArea": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable correctness checks for non input areas. Will enforce that the content outside of an input area never changes!"
           }
         }
       },
@@ -394,7 +406,7 @@
         }
       },
       {
-        "title": "Coq Editor",
+        "title": "Editor",
         "type": "object",
         "properties": {
           "waterproof.updateIgnores": {
@@ -432,7 +444,7 @@
     "vscode-extension-tester": "^5.6.0"
   },
   "dependencies": {
-    "@benrbray/prosemirror-math": "^0.2.2",
+    "@benrbray/prosemirror-math": "^1.0.0",
     "@codemirror/autocomplete": "^6.7.1",
     "@codemirror/commands": "^6.2.4",
     "@codemirror/language": "^6.6.0",
